@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frigate
+  namespace: frigate
+  labels:
+    app: frigate
+spec:
+  replicas: 1
+  revisionHistoryLimit: 0
+  strategy:
+   type: RollingUpdate
+  selector:
+    matchLabels:
+      app: frigate
+  template:
+    metadata:
+      labels:
+        app: frigate
+    spec:
+      initContainers:
+        - name: copy-configmap
+          image: alpine
+          command: ['sh', '-c', 'cp /tmp/config.yaml /config/config.yaml']
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: frigate-config
+              mountPath: /config
+            - name: frigate-configmap
+              mountPath: /tmp
+      containers:
+      - image: ghcr.io/blakeblackshear/frigate:stable
+        name: frigate
+        env:
+        - name: TZ
+          value: "Europe/Madrid"
+        - name: FRIGATE_RTSP_PASSWORD 
+          valueFrom:
+            secretKeyRef:
+              name: frigate-camera-secret
+              key: password
+        - name: PASSWD
+          valueFrom:
+            secretKeyRef:
+              name: frigate-secret
+              key: password
+        ports:
+        - name: https
+          containerPort: 8971
+        volumeMounts:
+        - name: frigate-data
+          mountPath: /media
+        - name: frigate-cache
+          mountPath: /dev/shm
+        - name: frigate-config
+          mountPath: /config
+      volumes:
+      - name: frigate-data
+        persistentVolumeClaim:
+          claimName: frigate-data-pvc
+      - name: frigate-cache
+        emptyDir:
+            sizeLimit: 1Gi
+      - name: frigate-config
+        persistentVolumeClaim:
+          claimName: frigate-config-pvc
+      - name: frigate-configmap
+        configMap:
+          name: frigate-config
